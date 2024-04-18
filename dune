@@ -1,0 +1,10 @@
+(ocamllex
+ (modules lexer))
+(menhir
+ (modules parser))
+(executable
+ (name main)
+ (promote (until-clean))
+ (modules lexer parser ast main autodiff)
+ (flags ()))
+  
