@@ -54,18 +54,18 @@ args_decl:
 ;
 
 stmt:
-| PARAM l = args_decl { SParamDecl l }
-| v = arg_decl SEMICOLON { SVarDecl (v, None) }
-| v = arg_decl EQ e = expr SEMICOLON { SVarDecl (v, Some e) }
-| RETURN s = IDENT SEMICOLON { SReturn s }
+| PARAM l = args_decl { SParamDecl l, $startpos }
+| v = arg_decl SEMICOLON { SVarDecl (v, None), $startpos }
+| v = arg_decl EQ e = expr SEMICOLON { SVarDecl (v, Some e), $startpos }
+| RETURN s = IDENT SEMICOLON { SReturn s, $startpos }
 ;
  
 expr:
 | LP e = expr RP { e }
-| l = expr o = op r = expr { Binop(o, l, r) } 
-| v = CSTI { Int v }
-| v = CSTF { Float v }
-| i = IDENT { Var i }
+| l = expr o = op r = expr { Binop(o, l, r), $startpos } 
+| v = CSTI { Int v, $startpos }
+| v = CSTF { Float v, $startpos }
+| i = IDENT { Var i, $startpos }
 ;
 
 %inline op:

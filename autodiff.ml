@@ -1,7 +1,7 @@
 open Ast
 open Graph
 
-exception AutodiffError of string
+exception AutodiffError of string * Lexing.position
 
 let check ast =
 	let vars = Hashtbl.create 100 in
@@ -19,17 +19,17 @@ let check ast =
 		| Unknown, Unknown -> false
 		in
 
-	let add_variable name dims is_param =
+	let add_variable pos name dims is_param =
 		match Hashtbl.find_opt vars name with
 		| None -> Hashtbl.add vars name (dims, is_param)
 		| Some (dims', is_param') -> (
 			if is_param && not is_param'
-			then raise (AutodiffError "A variable can't be turned into a parameter");
+			then raise (AutodiffError ("A variable can't be turned into a parameter", pos));
 			if not is_param && is_param'
-			then raise (AutodiffError "A parameter can't be turned into a variable");
+			then raise (AutodiffError ("A parameter can't be turned into a variable", pos));
 
 			if not (check_dimensions dims dims') && dims <> Unknown && dims' <> Unknown
-			then raise (AutodiffError "Incompatible dimensions");
+			then raise (AutodiffError ("Incompatible dimensions", pos));
 
 			Hashtbl.replace vars name (
 				(if dims <> Unknown then dims else dims'),
@@ -38,25 +38,27 @@ let check ast =
 		)
 		in
 
-	let rec check_expr_dims e = match e with
+	let rec check_expr_dims e =
+    let e, pos = e in
+    match e with
 		| Int _
 		| Float _ -> scalar
 		| Var n -> (
 			match Hashtbl.find_opt vars n with
 			| Some (dims, _) -> dims
-			| None -> raise (AutodiffError ("Use of undefined variable " ^ n))
+			| None -> raise (AutodiffError ("Use of undefined variable " ^ n, pos))
 		) 
 		| Binop (MatMul, mat, vec) -> (
 			match check_expr_dims mat, check_expr_dims vec with
-			| Unknown, _ -> raise (AutodiffError "Invalid dimension for the LHS")
-			| _, Unknown -> raise (AutodiffError "Invalid dimension for the RHS")
+			| Unknown, _ -> raise (AutodiffError ("Invalid dimension for the LHS", pos))
+			| _, Unknown -> raise (AutodiffError ("Invalid dimension for the RHS", pos))
 			| DimInt mat, DimInt vec -> (
 				let rec aux2 mat vec =
 					match mat, vec with
 					| [tm1], [tv1] when tv1 = tm1 -> []
 					| [tm2; tm1], [tv1] when tv1 = tm1 -> [tm2]
 					| t1::q1, t2::q2 when t1 = t2 -> t1::(aux2 q1 q2)
-					| _, _ -> raise (AutodiffError "Incompatible dimensions")
+					| _, _ -> raise (AutodiffError ("Incompatible dimensions", pos))
 				in DimInt (aux2 mat vec)
 			)
 		)
@@ -71,45 +73,46 @@ let check ast =
 				else
 					if check_dimensions d1 d2
 					then d1
-					else raise (AutodiffError ("Incompatible dimensions"));
+					else raise (AutodiffError ("Incompatible dimensions", pos));
 			) else (
 				if check_dimensions d1 d2
 				then d1
-				else raise (AutodiffError ("Incompatible dimensions"))
+				else raise (AutodiffError ("Incompatible dimensions", pos))
 			)
 		)
 		in
 
 	let check_stmt s =
+    let s, pos = s in
 		match s with
 		| SParamDecl v -> (
 			List.iter (fun (name, dims) ->
-				add_variable name dims true
+				add_variable pos name dims true
 			) v
 		)
 
 		| SReturn s -> (
 			match Hashtbl.find_opt vars s with
-			| None -> raise (AutodiffError "Unknown output")
-			| Some (Unknown, _) -> raise (AutodiffError "Unknown output dimension")
-			| Some (_, true) -> raise (AutodiffError "The output can't be a parameter")
+			| None -> raise (AutodiffError ("Unknown output", pos))
+			| Some (Unknown, _) -> raise (AutodiffError ("Unknown output dimension", pos))
+			| Some (_, true) -> raise (AutodiffError ("The output can't be a parameter", pos))
 			| Some _ -> ()
 		)
 
 		| SVarDecl ((name, dims), None) -> (
-			add_variable name dims false
+			add_variable pos name dims false
 		)
 
 		| SVarDecl ((name, dims), Some e) -> (
 			let dims' = check_expr_dims e in
 			match dims, dims' with
-			| _, Unknown -> raise (AutodiffError "Unknown dimension for expression")
-			| Unknown, _ -> (add_variable name dims' false)
+			| _, Unknown -> raise (AutodiffError ("Unknown dimension for expression", pos))
+			| Unknown, _ -> (add_variable pos name dims' false)
 			| _, _ -> (
 				if not (check_dimensions dims dims')
-				then raise (AutodiffError "Incompatible dimensions");
+				then raise (AutodiffError ("Incompatible dimensions", pos));
 
-				add_variable name dims false
+				add_variable pos name dims false
 			);
 		)
 		in
@@ -135,7 +138,8 @@ let build_dependancy_graph ast vars =
 		Array.iteri (fun i s' -> if s = s' then out_index := i) output.vtx;
 		!out_index
 		in
-	let rec aux_expr src_i e = match e with
+	let rec aux_expr src_i (e, _) =
+    match e with
 		| Int _ | Float _ -> ()
 		| Var dst -> (
 			let dst_i = get_graph_index dst in
@@ -148,7 +152,7 @@ let build_dependancy_graph ast vars =
 			aux_expr src_i l
 		)
 		in
-	let aux_stmt s : unit = match s with
+	let aux_stmt (s, _) = match s with
 		| SParamDecl _ -> ()
 		| SVarDecl (_, None) -> ()
 		| SReturn s -> out_var := get_graph_index s

@@ -89,9 +89,10 @@ let () =
   localisation (Lexing.lexeme_start_p buf);
   eprintf "Erreur lors de l'analyse syntaxique: %s@." s;
   exit 1
-  | Autodiff.AutodiffError s -> 
+  | Autodiff.AutodiffError (s, pos) -> 
   (* Erreur syntaxique. On r�cup�re sa position absolue et on la 
   convertit en num�ro de ligne *)
+  localisation pos;
   eprintf "Erreur lors de l'analyse de l'arbre: %s@." s;
   exit 1
 

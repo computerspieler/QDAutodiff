@@ -9,12 +9,14 @@ and param_dims =
 
 and arg = string * param_dims
 
-and stmt = 
+and stmt = stmt_node * Lexing.position
+and stmt_node = 
   | SParamDecl of arg list
   | SVarDecl of arg * (expr option) 
   | SReturn of string
 
-and expr = 
+and expr = expr_node * Lexing.position
+and expr_node = 
   | Int of int
   | Float of float
   | Var of string
