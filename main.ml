@@ -69,7 +69,7 @@ let () =
     (* Compilation de l'arbre de syntaxe abstraite p. Le code machine 
        r�sultant de cette transformation doit �tre �crit dans le fichier 
        cible ofile. *)
-    Autodiff.build_program p !ofile
+    Autodiff.build_program p (open_out !ofile)
   with
     | Lexer.Lexing_error c -> 
 	(* Erreur lexicale. On r�cup�re sa position absolue et 
@@ -96,8 +96,6 @@ let () =
   eprintf "Erreur lors de l'analyse de l'arbre: %s@." s;
   exit 1
 
-  | _ -> exit 1 (* TODO *)
-	
 
 
 

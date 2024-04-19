@@ -5,7 +5,7 @@ exception AutodiffError of string * Lexing.position
 
 let check ast =
 	let vars = Hashtbl.create 100 in
-  let scalar = DimInt [1] in
+  let scalar = DimInt [] in
 	(* La première valeur contient les dimension 
 	   La deuxième détermine si cette variable est un
 	   paramètre *)
@@ -47,21 +47,12 @@ let check ast =
 			match Hashtbl.find_opt vars n with
 			| Some (dims, _) -> dims
 			| None -> raise (AutodiffError ("Use of undefined variable " ^ n, pos))
-		) 
-		| Binop (MatMul, mat, vec) -> (
-			match check_expr_dims mat, check_expr_dims vec with
-			| Unknown, _ -> raise (AutodiffError ("Invalid dimension for the LHS", pos))
-			| _, Unknown -> raise (AutodiffError ("Invalid dimension for the RHS", pos))
-			| DimInt mat, DimInt vec -> (
-				let rec aux2 mat vec =
-					match mat, vec with
-					| [tm1], [tv1] when tv1 = tm1 -> []
-					| [tm2; tm1], [tv1] when tv1 = tm1 -> [tm2]
-					| t1::q1, t2::q2 when t1 = t2 -> t1::(aux2 q1 q2)
-					| _, _ -> raise (AutodiffError ("Incompatible dimensions", pos))
-				in DimInt (aux2 mat vec)
-			)
 		)
+    | Vec (e, len) -> (
+      match check_expr_dims e with
+      | DimInt dims -> DimInt (len :: dims)
+      | Unknown -> Unknown
+    )
 		| Binop (o, e1, e2) -> (
 			let d1 = check_expr_dims e1 in
 			let d2 = check_expr_dims e2 in
@@ -130,6 +121,7 @@ let build_dependancy_graph ast vars =
 	let output = graph_init
 		(Hashtbl.to_seq vars
 			|> Array.of_seq
+      (* Extract the name *)
 			|> Array.map (fun (x, _) -> x)
 		) in
 	let out_var = ref (-1) in
@@ -141,6 +133,7 @@ let build_dependancy_graph ast vars =
 	let rec aux_expr src_i (e, _) =
     match e with
 		| Int _ | Float _ -> ()
+    | Vec (e, _) -> aux_expr src_i e
 		| Var dst -> (
 			let dst_i = get_graph_index dst in
 			if src_i <> dst_i
@@ -161,8 +154,99 @@ let build_dependancy_graph ast vars =
 	List.iter aux_stmt ast;
 	output, !out_var
 
-let build_program ast _ofile =
+let rec build_forward_expression ofile vars vars_offset input_dim offset (e, _) =
+  let build_forward_expression = build_forward_expression
+    ofile vars vars_offset input_dim in
+  match e with
+  | Int x -> (
+    Printf.fprintf ofile " buffer[%d] = %d;\n" offset x;
+    offset + 1, []
+  )
+  | Float x -> (
+    Printf.fprintf ofile " buffer[%d] = %f;\n" offset x;
+    offset + 1, []
+  )
+  | Vec (e, len) -> (
+    let new_offset, dims = build_forward_expression offset e in
+    let size = (new_offset - offset) in
+
+    for i=1 to len do
+      Printf.fprintf ofile " memcpy(buffer + %d, buffer + %d, %d * sizeof(double));\n"
+        (offset + size * i) (offset) (size);
+    done;
+    new_offset + ((len - 1) * size), len::dims
+  )
+  | Var n when String.equal n "input" -> (
+    let size = List.fold_left ( * ) 1 input_dim in
+    Printf.fprintf ofile " memcpy(buffer + %d, input, %d * sizeof(double));\n"
+      offset size;
+    offset + size, input_dim
+  )
+  | Var n -> (
+    let dims, _ = Hashtbl.find vars n in
+    match dims with
+    | DimInt dims -> (
+      let size = List.fold_left ( * ) 1 dims in
+      let src_offset = Hashtbl.find vars_offset n in
+      Printf.fprintf ofile " memcpy(buffer + %d, buffer + %d, %d * sizeof(double));\n"
+        offset src_offset size;
+      offset + size, dims
+    )
+    | _ -> failwith "Impossible"
+  )
+  | Binop (op, lhs, rhs) -> (
+    let lhs_offset    = offset in
+    let rhs_offset, _ = build_forward_expression lhs_offset lhs in
+    let offset, dims  = build_forward_expression rhs_offset rhs in
+
+    let size = List.fold_left ( * ) 1 dims in
+    Printf.fprintf ofile " for(int i = 0; i < %d; i ++)\n" size;
+    Printf.fprintf ofile (
+      match op with
+      | Add -> "  buffer[%d + i] = buffer[%d + i] + buffer[%d + i];\n"
+      | Sub -> "  buffer[%d + i] = buffer[%d + i] - buffer[%d + i];\n"
+      | Mul -> "  buffer[%d + i] = buffer[%d + i] * buffer[%d + i];\n"
+      | Div -> "  buffer[%d + i] = buffer[%d + i] / buffer[%d + i];\n"
+    ) offset lhs_offset rhs_offset;
+
+    offset + size, dims
+  )
+
+let build_forward_function ofile ast vars input_dim = begin
+  Printf.fprintf ofile
+    "double* model_run(double *buffer, double *input) {\n";
+  let vars_offset = Hashtbl.create 100 in
+  let buf_size = List.fold_left (fun offset (s, pos) ->
+    match s with
+    | SParamDecl l -> (
+      List.fold_left (fun offset (n, dims) ->
+        match dims with
+        | DimInt dims -> (
+          let size = List.fold_left ( * ) 1 dims in
+          Hashtbl.add vars_offset n offset; 
+          offset + size
+        )
+        | _ -> failwith "Impossible"
+      ) offset l
+    )
+    | SReturn n -> (
+      Printf.fprintf ofile
+        " return buffer + %d;\n" offset;
+        offset
+    )
+    | SVarDecl (_, None) -> offset
+    | SVarDecl ((name, _), Some e) ->
+      Hashtbl.add vars_offset name offset;
+      let offset, _ = build_forward_expression ofile vars vars_offset input_dim offset e in
+      offset
+  ) 0 ast in
+  Printf.fprintf ofile
+    "}\n%!";
+end
+
+let build_program ast ofile =
 (* - Construction du programme *)
+  (* Check the program & retrieve the variables *)
 	let vars = check ast in
 	let parameters = ref [] in
 	let temp_vars = ref [] in
@@ -176,6 +260,15 @@ let build_program ast _ofile =
 		else ()
 	) vars;
 
+  let parameters = Array.of_list !parameters in
+  let temp_vars = Array.of_list !temp_vars in
+
+  (* Build the forward propagation *)
+  match input_dim with
+  | DimInt input_dim -> build_forward_function ofile ast vars input_dim
+  | _ -> ();
+
+  (* Get the backpropagation order *)
 	let g, start = build_dependancy_graph ast vars in
 	let visit_order = topo_sort g in
 	List.iter (fun i ->
@@ -186,6 +279,7 @@ let build_program ast _ofile =
   ) (List.rev visit_order);
 	print_newline ();
 
+  (* Print the variables dimensions *)
 	let print_var (name, dims) =
 		Printf.printf "%s: (%s)\n"
 			name (match dims with
@@ -196,6 +290,8 @@ let build_program ast _ofile =
 		
 	print_var ("Input size", input_dim);
 	Printf.printf "=== Parameters ===\n";
-	List.iter print_var !parameters;
+	Array.iteri (fun i v ->
+    print_var v;
+  ) parameters;
 	Printf.printf "=== Variables ===\n";
-	List.iter print_var !temp_vars
+	Array.iter print_var temp_vars

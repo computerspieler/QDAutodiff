@@ -36,11 +36,11 @@ rule token = parse
   | '\n'    { newline lexbuf; token lexbuf }
   | space+  { token lexbuf }
   | ident as id { id_or_kwd id }
+  | ".."    { DOUBLEDOTS }
   | '+'     { PLUS }
   | '-'     { MINUS }
   | '*'     { TIMES }
   | '/'     { DIV }
-  | '.'     { DOT }
   | '='     { EQ }
   | '('     { LP }
   | ')'     { RP }

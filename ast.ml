@@ -19,8 +19,9 @@ and expr = expr_node * Lexing.position
 and expr_node = 
   | Int of int
   | Float of float
+  | Vec of expr * int
   | Var of string
   | Binop of binop * expr * expr
 
-and binop = Add | Sub | Mul | Div | MatMul
+and binop = Add | Sub | Mul | Div
 

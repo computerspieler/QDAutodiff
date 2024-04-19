@@ -11,9 +11,9 @@
 %token PARAM RETURN 
 %token EOF 
 %token LP RP LB RB
-%token PLUS MINUS TIMES DIV DOT
+%token PLUS MINUS TIMES DIV
 %token EQ
-%token COLON COMMA SEMICOLON
+%token COLON COMMA SEMICOLON DOUBLEDOTS
 
 /* D�finitions des priorit�s et associativit�s des tokens */
 
@@ -66,6 +66,7 @@ expr:
 | v = CSTI { Int v, $startpos }
 | v = CSTF { Float v, $startpos }
 | i = IDENT { Var i, $startpos }
+| e = expr DOUBLEDOTS len=CSTI { Vec (e, len), $startpos }
 ;
 
 %inline op:
@@ -73,6 +74,5 @@ expr:
 | MINUS { Sub }
 | TIMES { Mul }
 | DIV   { Div }
-| DOT   { MatMul }
 ;
 
