@@ -1,19 +1,24 @@
-(* Syntaxe abstraite pour notre langage *)
+exception ParsingError of string
 
+(* Syntaxe abstraite pour notre langage *)
 type program = stmt list 
 
+and param_dims =
+  | DimInt of int list
+  | Unknown
+
+and arg = string * param_dims
+
 and stmt = 
-  | Read of string
-  | Print of expr
-  | Function of string*string*expr
+  | SParamDecl of arg list
+  | SVarDecl of arg * (expr option) 
+  | SReturn of string
 
 and expr = 
-  | Cst of int
+  | Int of int
+  | Float of float
   | Var of string
   | Binop of binop * expr * expr
-  | Letin of string * expr * expr
-  | Call of string * expr
-  | Arg
 
-and binop = Add | Sub | Mul | Div
+and binop = Add | Sub | Mul | Div | MatMul
 

@@ -1,0 +1,13 @@
+/*
+function attention(Q: 1, K: 1, V: 1) {
+    let dk = sqrt(dim(k))
+    return softmax(Q * K.T / dk)
+}
+*/
+input: (2);
+param l_in: (1, 2), l_h: (2, 1), l_out: (2, 2);
+
+l1 = 5.125 * (l_in . input);
+l2 = l_h . l1;
+l3 = l_out . l2;
+return l2;

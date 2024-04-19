@@ -5,26 +5,25 @@
   open Ast
 %}
 
-%token <int> CST
+%token <int> CSTI
+%token <float> CSTF
 %token <string> IDENT
-%token LET, IN, PRINT, READ
+%token PARAM RETURN 
 %token EOF 
-%token LP RP
-%token PLUS MINUS TIMES DIV
+%token LP RP LB RB
+%token PLUS MINUS TIMES DIV DOT
 %token EQ
-%token FUNCTION COLON
+%token COLON COMMA SEMICOLON
 
-/* Définitions des priorités et associativités des tokens */
+/* Dï¿½finitions des prioritï¿½s et associativitï¿½s des tokens */
 
-%nonassoc IN
 %left PLUS MINUS 
 %left TIMES DIV
-%nonassoc uminus
 
-/* Point d'entrée de la grammaire */
+/* Point d'entrï¿½e de la grammaire */
 %start prog
 
-/* Type des valeurs retournées par l'analyseur syntaxique */
+/* Type des valeurs retournï¿½es par l'analyseur syntaxique */
 %type <Ast.program> prog
 
 %%
@@ -32,22 +31,41 @@
 prog:
 | p = list(stmt) EOF { p }
 ;
- 
+
+dim_values:
+| x = CSTI COMMA n = dim_values { x::n }
+| x = CSTI { [x] }
+;
+
+arg_decl:
+| n = IDENT { (n, Unknown) }
+| n = IDENT COLON LP dim = dim_values RP { (n, DimInt dim) }
+| n = IDENT COLON dim_len = CSTI { (n, Unknown) }
+| n = IDENT COLON dim_len = CSTI LP dim = dim_values RP {
+    if List.length dim <> dim_len
+    then raise (ParsingError "Incompatible dimensions")
+    else (n, DimInt dim)
+}
+;
+
+args_decl:
+| a = arg_decl COMMA n = args_decl  { a::n }
+| a = arg_decl SEMICOLON            { [a] }
+;
+
 stmt:
-| PRINT e = expr             { Print e }
-| READ id = IDENT             { Read id }
-| FUNCTION id = IDENT LP arg = IDENT RP COLON e = expr             { Function(id,arg,e) }
+| PARAM l = args_decl { SParamDecl l }
+| v = arg_decl SEMICOLON { SVarDecl (v, None) }
+| v = arg_decl EQ e = expr SEMICOLON { SVarDecl (v, Some e) }
+| RETURN s = IDENT SEMICOLON { SReturn s }
 ;
  
 expr:
-| c = CST                        { Cst c }
-| fct = IDENT LP arg = expr RP                 { Call(fct,arg) }
-| id = IDENT                     { Var id }
-| e1 = expr o = op e2 = expr     { Binop (o, e1, e2) }
-| MINUS e = expr %prec uminus    { Binop (Sub, Cst 0, e) } 
-| LET id = IDENT EQ e1 = expr IN e2 = expr 
-                                 { Letin (id, e1, e2) }
-| LP e = expr RP                 { e }
+| LP e = expr RP { e }
+| l = expr o = op r = expr { Binop(o, l, r) } 
+| v = CSTI { Int v }
+| v = CSTF { Float v }
+| i = IDENT { Var i }
 ;
 
 %inline op:
@@ -55,7 +73,6 @@ expr:
 | MINUS { Sub }
 | TIMES { Mul }
 | DIV   { Div }
+| DOT   { MatMul }
 ;
-
-
 
