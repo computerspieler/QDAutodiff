@@ -1,7 +1,7 @@
 exception ParsingError of string
 
 (* Syntaxe abstraite pour notre langage *)
-type program = stmt list 
+type 'a program = ('a stmt) list 
 
 and param_dims =
   | DimInt of int list
@@ -9,19 +9,19 @@ and param_dims =
 
 and arg = string * param_dims
 
-and stmt = stmt_node * Lexing.position
-and stmt_node = 
+and 'a stmt = 'a stmt_node * 'a
+and 'a stmt_node = 
   | SParamDecl of arg list
-  | SVarDecl of arg * (expr option) 
+  | SVarDecl of arg * (('a expr) option) 
   | SReturn of string
 
-and expr = expr_node * Lexing.position
-and expr_node = 
+and 'a expr = ('a expr_node) * 'a
+and 'a expr_node = 
   | Int of int
   | Float of float
-  | Vec of expr * int
+  | Vec of ('a expr) * int
   | Var of string
-  | Binop of binop * expr * expr
+  | Binop of binop * ('a expr) * ('a expr)
 
 and binop = Add | Sub | Mul | Div
 

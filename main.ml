@@ -46,7 +46,7 @@ let () =
 
   (* Par d�faut, le fichier cible a le m�me nom que le fichier source, 
      seule l'extension change *)
-  if !ofile="" then ofile := Filename.chop_suffix !ifile ".exp" ^ ".s";
+  if !ofile="" then ofile := Filename.chop_suffix !ifile ".exp" ^ ".c";
   
   (* Ouverture du fichier source en lecture *)
   let f = open_in !ifile in

@@ -4,9 +4,11 @@ function attention(Q: 1, K: 1, V: 1) {
     return softmax(Q * K.T / dk)
 }
 */
-input: (2);
-param a: (2);
 
-l1 = a * input + (1 .. 2);
-l3 = l1;
+input: (2);
+param a: (2), b: (2), c: (2);
+
+l1 = a * input + 5*(1 .. 2);
+l2 = c * l1;
+l3 = b * l1 + l2;
 return l3;

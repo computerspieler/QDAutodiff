@@ -5,6 +5,6 @@
 (executable
  (name main)
  (promote (until-clean))
- (modules lexer parser ast main autodiff graph)
+ (modules lexer parser ast main autodiff)
  (flags ()))
   

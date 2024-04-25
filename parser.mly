@@ -24,7 +24,7 @@
 %start prog
 
 /* Type des valeurs retourn�es par l'analyseur syntaxique */
-%type <Ast.program> prog
+%type <Lexing.position Ast.program> prog
 
 %%
 
